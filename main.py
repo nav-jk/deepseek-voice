@@ -12,7 +12,7 @@ from transformers import pipeline, AutoProcessor, AutoModelForSpeechSeq2Seq
 load_dotenv()
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-PUBLIC_AUDIO_BASE_URL = "http://localhost:8000"
+PUBLIC_AUDIO_BASE_URL = "https://agrivoice-2-ws-2a-8000.ml.iit-ropar.truefoundry.cloud"
 
 # FastAPI app
 app = FastAPI()
