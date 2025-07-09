@@ -1,8 +1,8 @@
 fastapi
-uvicorn
-torch==2.1.0  # Or match your CUDA version
-transformers
+uvicorn[standard]
+python-dotenv
 httpx
+gtts
+transformers
+torch
 openai
-ffmpeg-python
-python-multipart
