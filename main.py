@@ -22,7 +22,13 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=OPENROUTER_API_KEY,
+    default_headers={
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "HTTP-Referer": "https://agrikart.ai",
+        "X-Title": "AgriKart VoiceBot"
+    }
 )
+
 
 SYSTEM_PROMPT_TEMPLATE = """
 You are an assistant designed to help Indian farmers by answering their agricultural questions. These questions are often spoken in local languages and converted to text, so they may contain spelling or grammar mistakes. Your job is to understand the question and respond appropriately.
@@ -70,17 +76,14 @@ async def call_deepseek_with_context(question: str, context_snippets: list[str],
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
-            ],
-            extra_headers={
-                "HTTP-Referer": "https://agrikart.ai",
-                "X-Title": "AgriKart VoiceBot"
-            }
+            ]
         )
         print("✅ DeepSeek response generated")
         return completion.choices[0].message.content
     except Exception as e:
         print("❌ DeepSeek failed:", e)
         return "Sorry, I'm unable to answer your question at the moment."
+
 
 # 🔊 TTS with gTTS
 def generate_tts(text: str, lang: str) -> str | None:
