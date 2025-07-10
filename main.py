@@ -6,17 +6,16 @@ import httpx
 from gtts import gTTS
 import requests
 import json
+from pydub import AudioSegment
 from dotenv import load_dotenv
 
-# Load environment variables
-
+load_dotenv()
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 print("🔑 OpenRouter Key Loaded?", bool(OPENROUTER_API_KEY))
 
 PUBLIC_AUDIO_BASE_URL = "https://agrivoice-2-ws-2a-8000.ml.iit-ropar.truefoundry.cloud"
 
-# FastAPI app
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -42,7 +41,6 @@ LANG_MAP = {
     "te": "Telugu", "mr": "Marathi", "kn": "Kannada", "bn": "Bengali"
 }
 
-# 🔍 Context fetch from Serper
 async def fetch_search_snippets(query: str):
     headers = {"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"}
     try:
@@ -56,7 +54,6 @@ async def fetch_search_snippets(query: str):
         print("❌ Serper fetch error:", e)
         return []
 
-# 🤖 DeepSeek via OpenRouter
 async def call_deepseek_with_context(question: str, context_snippets: list[str], lang_name: str):
     system_prompt = SYSTEM_PROMPT_TEMPLATE.format(lang_name=lang_name)
     prompt = "\n".join(context_snippets) + f"\n\nFarmer's Question: {question}"
@@ -86,7 +83,14 @@ async def call_deepseek_with_context(question: str, context_snippets: list[str],
         print("❌ DeepSeek failed:", e)
         return "Sorry, I'm unable to answer your question at the moment."
 
-# 🔊 TTS
+def convert_ogg_to_mp3(input_path: str, output_path: str):
+    try:
+        sound = AudioSegment.from_ogg(input_path)
+        sound.export(output_path, format="mp3")
+        print("🎵 Converted OGG to MP3")
+    except Exception as e:
+        print("Conversion error:", e)
+
 def generate_tts(text: str, lang: str) -> str | None:
     try:
         tts = gTTS(text=text, lang=lang)
@@ -101,22 +105,30 @@ def generate_tts(text: str, lang: str) -> str | None:
         print("TTS error:", e)
         return None
 
-# 🎙️ Main API Endpoint
 @app.post("/chat/")
 async def chat(file: UploadFile = File(...), lang: str = Form(...)):
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
+        suffix = ".ogg" if file.filename.endswith(".ogg") else ".mp3"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(await file.read())
-            audio_path = tmp.name
-            print("📥 Audio uploaded to:", audio_path)
+            raw_audio_path = tmp.name
+            print("📥 Audio uploaded to:", raw_audio_path)
 
-        # Send audio to external transcription API
+        # Convert OGG to MP3
+        if raw_audio_path.endswith(".ogg"):
+            mp3_audio_path = raw_audio_path.replace(".ogg", ".mp3")
+            convert_ogg_to_mp3(raw_audio_path, mp3_audio_path)
+            os.remove(raw_audio_path)
+        else:
+            mp3_audio_path = raw_audio_path
+
+        # Transcribe
         transcription_api_url = "https://agrivoice-api-ws-2a-8000.ml.iit-ropar.truefoundry.cloud/chat/"
         async with httpx.AsyncClient() as client:
-            with open(audio_path, "rb") as f:
-                files = {"file": (file.filename, f, file.content_type)}
+            with open(mp3_audio_path, "rb") as f:
+                files = {"file": (file.filename, f, "audio/mpeg")}
                 response = await client.post(transcription_api_url, files=files)
-        os.remove(audio_path)
+        os.remove(mp3_audio_path)
 
         if response.status_code != 200:
             raise Exception(f"Transcription API failed: {response.status_code} {response.text}")
@@ -129,13 +141,11 @@ async def chat(file: UploadFile = File(...), lang: str = Form(...)):
         print("❌ Transcription failed:", e)
         return JSONResponse({"error": f"Transcription failed: {str(e)}"}, status_code=500)
 
-    # Search + LLM
     context = await fetch_search_snippets(question)
     lang_name = LANG_MAP.get(lang, "Hindi")
     reply = await call_deepseek_with_context(question, context, lang_name)
     print("🤖 Final reply:", reply)
 
-    # TTS
     audio_url = generate_tts(reply, lang)
 
     return JSONResponse({

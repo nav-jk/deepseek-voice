@@ -5,3 +5,4 @@ gTTS
 python-dotenv
 requests
 python-multipart
+pydub
