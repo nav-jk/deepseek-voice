@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+print("🔑 OpenRouter Key Loaded?", bool(OPENROUTER_API_KEY))
 PUBLIC_AUDIO_BASE_URL = "https://agrivoice-2-ws-2a-8000.ml.iit-ropar.truefoundry.cloud"
 
 # FastAPI app
