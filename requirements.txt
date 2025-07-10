@@ -4,3 +4,4 @@ httpx
 gTTS
 openai
 python-dotenv
+python-multipart
