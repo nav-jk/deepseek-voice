@@ -4,7 +4,8 @@ from fastapi.staticfiles import StaticFiles
 import os, time, tempfile
 import httpx
 from gtts import gTTS
-from openai import OpenAI
+import requests
+import json
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -12,23 +13,12 @@ from dotenv import load_dotenv
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 print("🔑 OpenRouter Key Loaded?", bool(OPENROUTER_API_KEY))
+
 PUBLIC_AUDIO_BASE_URL = "https://agrivoice-2-ws-2a-8000.ml.iit-ropar.truefoundry.cloud"
 
 # FastAPI app
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# DeepSeek client via OpenRouter
-client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=OPENROUTER_API_KEY,
-    default_headers={
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "HTTP-Referer": "https://agrikart.ai",
-        "X-Title": "AgriKart VoiceBot"
-    }
-)
-
 
 SYSTEM_PROMPT_TEMPLATE = """
 You are an assistant designed to help Indian farmers by answering their agricultural questions. These questions are often spoken in local languages and converted to text, so they may contain spelling or grammar mistakes. Your job is to understand the question and respond appropriately.
@@ -66,26 +56,37 @@ async def fetch_search_snippets(query: str):
         print("❌ Serper fetch error:", e)
         return []
 
-# 🤖 DeepSeek response
+# 🤖 DeepSeek via OpenRouter
 async def call_deepseek_with_context(question: str, context_snippets: list[str], lang_name: str):
     system_prompt = SYSTEM_PROMPT_TEMPLATE.format(lang_name=lang_name)
     prompt = "\n".join(context_snippets) + f"\n\nFarmer's Question: {question}"
+
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://agrikart.ai",
+        "X-Title": "AgriKart VoiceBot"
+    }
+
+    payload = {
+        "model": "deepseek/deepseek-r1:free",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ]
+    }
+
     try:
-        completion = client.chat.completions.create(
-            model="deepseek/deepseek-r1-0528:free",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt}
-            ]
-        )
+        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, data=json.dumps(payload))
+        response.raise_for_status()
+        completion = response.json()
         print("✅ DeepSeek response generated")
-        return completion.choices[0].message.content
+        return completion["choices"][0]["message"]["content"]
     except Exception as e:
         print("❌ DeepSeek failed:", e)
         return "Sorry, I'm unable to answer your question at the moment."
 
-
-# 🔊 TTS with gTTS
+# 🔊 TTS
 def generate_tts(text: str, lang: str) -> str | None:
     try:
         tts = gTTS(text=text, lang=lang)
@@ -109,7 +110,7 @@ async def chat(file: UploadFile = File(...), lang: str = Form(...)):
             audio_path = tmp.name
             print("📥 Audio uploaded to:", audio_path)
 
-        # Send audio to transcription API
+        # Send audio to external transcription API
         transcription_api_url = "https://agrivoice-api-ws-2a-8000.ml.iit-ropar.truefoundry.cloud/chat/"
         async with httpx.AsyncClient() as client:
             with open(audio_path, "rb") as f:

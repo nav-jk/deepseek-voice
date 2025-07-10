@@ -2,6 +2,6 @@ fastapi
 uvicorn[standard]
 httpx
 gTTS
-openai
 python-dotenv
+requests
 python-multipart
