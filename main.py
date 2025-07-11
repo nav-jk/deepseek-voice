@@ -194,8 +194,8 @@ async def chat(file: UploadFile = File(...), lang: str = Form(...)):
     reply = reply.strip()
     if len(reply) > 1000:
         reply = reply[:1000] + "..."
-    if not reply.replace(" ", "").isprintable():
-        print("⚠️ Bad reply detected:", repr(reply))
+    if not reply.strip():
+        print("⚠️ Empty or invalid reply detected:", repr(reply))
         reply = "Sorry, I couldn't process your question. Please try again."
 
     print("🤖 Final reply:", repr(reply))
