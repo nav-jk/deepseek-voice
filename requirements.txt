@@ -6,4 +6,4 @@ python-dotenv
 requests
 python-multipart
 pydub
-requests
+regex
