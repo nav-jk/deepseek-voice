@@ -1,16 +1,15 @@
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-import os, time, tempfile
+import os, time, tempfile, json, requests
 import httpx
 from gtts import gTTS
-import requests
-import json
 from pydub import AudioSegment
 from dotenv import load_dotenv
 
-load_dotenv()
-SERPER_API_KEY = os.getenv("SERPER_API_KEY")
+
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 print("🔑 OpenRouter Key Loaded?", bool(OPENROUTER_API_KEY))
 
@@ -41,17 +40,53 @@ LANG_MAP = {
     "te": "Telugu", "mr": "Marathi", "kn": "Kannada", "bn": "Bengali"
 }
 
-async def fetch_search_snippets(query: str):
-    headers = {"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"}
+async def refine_query_with_deepseek(question: str) -> str:
+    system_prompt = "You are an AI that rewrites noisy farmer questions into clean search queries relevant to Indian agriculture."
+
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://agrikart.ai",
+        "X-Title": "AgriKart VoiceBot"
+    }
+
+    payload = {
+        "model": "deepseek/deepseek-r1:free",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Refine this into a clean Google search query: {question}"}
+        ]
+    }
+
+    try:
+        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, data=json.dumps(payload))
+        response.raise_for_status()
+        refined = response.json()["choices"][0]["message"]["content"]
+        print("🔍 Refined search query:", refined)
+        return refined.strip()
+    except Exception as e:
+        print("❌ DeepSeek refine failed:", e)
+        return question
+
+async def search_tnau(query: str, max_results=10) -> list[str]:
+    search_url = "https://www.googleapis.com/customsearch/v1"
+    params = {
+        "key": GOOGLE_API_KEY,
+        "cx": GOOGLE_CSE_ID,
+        "q": query,
+        "num": max_results
+    }
+
     try:
         async with httpx.AsyncClient() as client:
-            res = await client.post("https://google.serper.dev/search", headers=headers, json={"q": query, "gl": "in"})
+            res = await client.get(search_url, params=params)
+            res.raise_for_status()
             data = res.json()
-            snippets = [item.get("snippet", "") for item in data.get("organic", [])[:5]]
-            print("🔍 Search snippets:", snippets)
+            snippets = [item.get("snippet", "") for item in data.get("items", [])]
+            print("📄 TNAU Search Snippets:", snippets)
             return snippets
     except Exception as e:
-        print("❌ Serper fetch error:", e)
+        print("❌ TNAU Search Error:", e)
         return []
 
 async def call_deepseek_with_context(question: str, context_snippets: list[str], lang_name: str):
@@ -141,11 +176,21 @@ async def chat(file: UploadFile = File(...), lang: str = Form(...)):
         print("❌ Transcription failed:", e)
         return JSONResponse({"error": f"Transcription failed: {str(e)}"}, status_code=500)
 
-    context = await fetch_search_snippets(question)
+    # ✨ Step 2: Refine query
+    refined_query = await refine_query_with_deepseek(question)
+    print("Refined Query :", refined_query)
+
+
+    # ✨ Step 3: Search TNAU
+    context = await search_tnau(refined_query)
+    print("Context from google search : ",context)
+
+    # ✨ Step 4: Generate final reply using DeepSeek
     lang_name = LANG_MAP.get(lang, "Hindi")
     reply = await call_deepseek_with_context(question, context, lang_name)
     print("🤖 Final reply:", reply)
 
+    # ✨ Step 5: TTS
     audio_url = generate_tts(reply, lang)
 
     return JSONResponse({
