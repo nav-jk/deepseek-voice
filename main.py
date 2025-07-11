@@ -6,6 +6,7 @@ import httpx
 from gtts import gTTS
 from pydub import AudioSegment
 from dotenv import load_dotenv
+import re
 
 load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -61,12 +62,19 @@ async def refine_query_with_deepseek(question: str) -> str:
     try:
         response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, data=json.dumps(payload))
         response.raise_for_status()
-        refined = response.json()["choices"][0]["message"]["content"]
-        print("🔍 Refined search query:", refined)
-        return refined.strip()
+        content = response.json()["choices"][0]["message"]["content"]
+        print("🔍 Raw DeepSeek Output:", repr(content))
+
+        # Extract only the actual query using regex
+        match = re.search(r'"([^"]+)"', content)
+        refined_query = match.group(1) if match else content.strip()
+        print("✅ Final Refined Query for Google:", repr(refined_query))
+
+        return refined_query
     except Exception as e:
         print("❌ DeepSeek refine failed:", e)
         return question
+
 
 async def search_tnau(query: str, max_results=5) -> list[str]:
     """
