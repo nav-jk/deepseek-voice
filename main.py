@@ -73,7 +73,7 @@ async def search_tnau(query: str, max_results=5) -> list[str]:
     Use an external API endpoint to fetch search snippets from agritech.tnau.ac.in.
     This replaces direct Google API call.
     """
-    TNAU_SEARCH_API = "http://localhost:8001/search/"  # 🔁 Replace with deployed URL if needed
+    TNAU_SEARCH_API = "https://agrisearch-ws-2a-8000.ml.iit-ropar.truefoundry.cloud/search/"  # 🔁 Replace with deployed URL if needed
 
     try:
         async with httpx.AsyncClient() as client:
