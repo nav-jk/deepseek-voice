@@ -7,7 +7,7 @@ from gtts import gTTS
 from pydub import AudioSegment
 from dotenv import load_dotenv
 
-
+load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -68,7 +68,7 @@ async def refine_query_with_deepseek(question: str) -> str:
         print("❌ DeepSeek refine failed:", e)
         return question
 
-async def search_tnau(query: str, max_results=10) -> list[str]:
+async def search_tnau(query: str, max_results=5) -> list[str]:
     search_url = "https://www.googleapis.com/customsearch/v1"
     params = {
         "key": GOOGLE_API_KEY,
@@ -149,7 +149,6 @@ async def chat(file: UploadFile = File(...), lang: str = Form(...)):
             raw_audio_path = tmp.name
             print("📥 Audio uploaded to:", raw_audio_path)
 
-        # Convert OGG to MP3
         if raw_audio_path.endswith(".ogg"):
             mp3_audio_path = raw_audio_path.replace(".ogg", ".mp3")
             convert_ogg_to_mp3(raw_audio_path, mp3_audio_path)
@@ -157,7 +156,6 @@ async def chat(file: UploadFile = File(...), lang: str = Form(...)):
         else:
             mp3_audio_path = raw_audio_path
 
-        # Transcribe
         transcription_api_url = "https://agrivoice-api-ws-2a-8000.ml.iit-ropar.truefoundry.cloud/chat/"
         async with httpx.AsyncClient() as client:
             with open(mp3_audio_path, "rb") as f:
@@ -176,21 +174,25 @@ async def chat(file: UploadFile = File(...), lang: str = Form(...)):
         print("❌ Transcription failed:", e)
         return JSONResponse({"error": f"Transcription failed: {str(e)}"}, status_code=500)
 
-    # ✨ Step 2: Refine query
+    # ✨ Refine query
     refined_query = await refine_query_with_deepseek(question)
-    print("Refined Query :", refined_query)
-
-
-    # ✨ Step 3: Search TNAU
+    # ✨ Search TNAU with refined query
     context = await search_tnau(refined_query)
-    print("Context from google search : ",context)
 
-    # ✨ Step 4: Generate final reply using DeepSeek
+    # ✨ Generate reply
     lang_name = LANG_MAP.get(lang, "Hindi")
     reply = await call_deepseek_with_context(question, context, lang_name)
-    print("🤖 Final reply:", reply)
 
-    # ✨ Step 5: TTS
+    # ✨ Sanitize reply
+    reply = reply.strip()
+    if len(reply) > 1000:
+        reply = reply[:1000] + "..."
+    if not reply.replace(" ", "").isprintable():
+        print("⚠️ Bad reply detected:", repr(reply))
+        reply = "Sorry, I couldn't process your question. Please try again."
+
+    print("🤖 Final reply:", repr(reply))
+
     audio_url = generate_tts(reply, lang)
 
     return JSONResponse({
