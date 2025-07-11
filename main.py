@@ -69,25 +69,24 @@ async def refine_query_with_deepseek(question: str) -> str:
         return question
 
 async def search_tnau(query: str, max_results=5) -> list[str]:
-    search_url = "https://www.googleapis.com/customsearch/v1"
-    params = {
-        "key": GOOGLE_API_KEY,
-        "cx": GOOGLE_CSE_ID,
-        "q": query,
-        "num": max_results
-    }
+    """
+    Use an external API endpoint to fetch search snippets from agritech.tnau.ac.in.
+    This replaces direct Google API call.
+    """
+    TNAU_SEARCH_API = "http://localhost:8001/search/"  # 🔁 Replace with deployed URL if needed
 
     try:
         async with httpx.AsyncClient() as client:
-            res = await client.get(search_url, params=params)
-            res.raise_for_status()
-            data = res.json()
-            snippets = [item.get("snippet", "") for item in data.get("items", [])]
+            response = await client.post(TNAU_SEARCH_API, json={"query": query, "num_results": max_results})
+            response.raise_for_status()
+            data = response.json()
+            snippets = data.get("snippets", [])
             print("📄 TNAU Search Snippets:", snippets)
             return snippets
     except Exception as e:
-        print("❌ TNAU Search Error:", e)
+        print("❌ TNAU Search API Error:", e)
         return []
+
 
 async def call_deepseek_with_context(question: str, context_snippets: list[str], lang_name: str):
     system_prompt = SYSTEM_PROMPT_TEMPLATE.format(lang_name=lang_name)
